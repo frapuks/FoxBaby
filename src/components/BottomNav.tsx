@@ -70,6 +70,9 @@ const BottomNav = ({ value, onChange }: BottomNavProps) => {
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         overflow: "hidden",
+        // Espace vide sous les icônes : zone sûre (barre d'accueil mobile) + marge,
+        // pour que les boutons ne soient pas collés au bord bas.
+        pb: "calc(env(safe-area-inset-bottom) + 16px)",
       }}
     >
       <BottomNavigation

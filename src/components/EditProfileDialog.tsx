@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Alert,
   Avatar,
@@ -54,18 +54,6 @@ const EditProfileDialog = ({ open, onClose }: EditProfileDialogProps) => {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  // Réinitialise les champs à l'ouverture
-  useEffect(() => {
-    if (open) {
-      setName(user?.displayName ?? "");
-      setEmail(user?.email ?? "");
-      setSelectedAvatar(avatar);
-      setCurrentPassword("");
-      setError(null);
-      setInfo(null);
-    }
-  }, [open, user, avatar]);
 
   const emailChanged = email !== (user?.email ?? "");
 

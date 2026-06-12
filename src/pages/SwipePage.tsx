@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+} from "react";
 import {
   Box,
   Button,
@@ -16,7 +22,7 @@ import FavoriteIcon from "@mui/icons-material/Favorite";
 import HistoryIcon from "@mui/icons-material/History";
 import SwipeIcon from "@mui/icons-material/Swipe";
 import type { NameDoc } from "../services/names";
-import { fetchNames } from "../services/names";
+import { createNamePager } from "../services/names";
 import {
   fetchFavorites,
   fetchSwipedIds,
@@ -30,59 +36,119 @@ import { useAuth } from "../auth/AuthContext";
 const SWIPE_THRESHOLD = 120;
 const EXIT_OFFSET = 700;
 
-// Mélange (Fisher-Yates) pour un ordre aléatoire
-const shuffle = <T,>(array: T[]): T[] => {
-  const result = [...array];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-};
+// Pagination : on recharge la file dès qu'elle passe sous REFILL_AT, en visant
+// au moins PAGE_FETCH nouveaux prénoms (non encore tranchés) par recharge.
+const REFILL_AT = 8;
+const PAGE_FETCH = 12;
 
 const SwipePage = () => {
   const { user } = useAuth();
   const { genderFilter } = usePreferences();
 
-  const [allNames, setAllNames] = useState<NameDoc[]>([]);
-  const [swipedIds, setSwipedIds] = useState<Set<string>>(new Set());
   const [partnerFavIds, setPartnerFavIds] = useState<Set<string>>(new Set());
   const [queue, setQueue] = useState<NameDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exhausted, setExhausted] = useState(false);
   const [matchName, setMatchName] = useState<string | null>(null);
+  const [userDataVersion, setUserDataVersion] = useState(0);
+
+  // Prénoms déjà tranchés (chargés une fois) — en ref pour le filtrage async.
+  const swipedRef = useRef<Set<string>>(new Set());
+  const pagerRef = useRef<ReturnType<typeof createNamePager> | null>(null);
+  const doneRef = useRef(false);
+  const loadingMoreRef = useRef(false);
+  const userReadyRef = useRef(false);
 
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [animate, setAnimate] = useState(true);
   const startX = useRef(0);
 
+  // Charge une page de prénoms et l'ajoute à la file (en sautant ceux déjà
+  // tranchés). On enchaîne les pages jusqu'à PAGE_FETCH nouveaux, ou la fin.
+  const loadMore = useCallback(async () => {
+    const pager = pagerRef.current;
+    if (!pager || doneRef.current || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    try {
+      const fresh: NameDoc[] = [];
+      let finished = false;
+      while (fresh.length < PAGE_FETCH && !finished) {
+        const { names, done } = await pager.next();
+        // Le filtre de genre a changé pendant le chargement : on abandonne
+        // pour ne pas polluer la nouvelle file avec l'ancien pager.
+        if (pagerRef.current !== pager) return;
+        finished = done;
+        for (const n of names) {
+          if (!swipedRef.current.has(n.id)) fresh.push(n);
+        }
+      }
+      if (pagerRef.current !== pager) return;
+      if (finished) doneRef.current = true;
+      if (fresh.length) setQueue((q) => [...q, ...fresh]);
+      if (finished) setExhausted(true);
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, []);
+
+  // Données propres à l'utilisateur (prénoms déjà tranchés + favoris du
+  // partenaire pour les matchs) : chargées une seule fois par utilisateur.
   useEffect(() => {
     if (!user) return;
+    userReadyRef.current = false;
+    let cancelled = false;
     const loadPartnerFavs = async () => {
-      const couple = await getMyCouple(user.uid).catch(() => null);
+      // Pas besoin de réconcilier le statut de liaison ici (fait sur les
+      // écrans couple/profil) : on veut juste l'uid du partenaire.
+      const couple = await getMyCouple(user.uid, undefined, {
+        reconcile: false,
+      }).catch(() => null);
       const partnerUid = couple?.members.find((m) => m !== user.uid);
       if (!partnerUid) return new Set<string>();
       const favs = await fetchFavorites(partnerUid).catch(() => []);
       return new Set(favs.map((f) => f.nameId));
     };
-
-    Promise.all([fetchNames(), fetchSwipedIds(user.uid), loadPartnerFavs()])
-      .then(([names, swiped, partnerFavs]) => {
-        setAllNames(shuffle(names));
-        setSwipedIds(swiped);
-        setPartnerFavIds(partnerFavs);
-      })
-      .finally(() => setLoading(false));
+    (async () => {
+      const [swiped, partnerFavs] = await Promise.all([
+        fetchSwipedIds(user.uid).catch(() => new Set<string>()),
+        loadPartnerFavs(),
+      ]);
+      if (cancelled) return;
+      swipedRef.current = swiped;
+      setPartnerFavIds(partnerFavs);
+      userReadyRef.current = true;
+      setUserDataVersion((v) => v + 1);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
-  // (Re)construit la file : exclut les prénoms déjà tranchés + filtre de genre
+  // (Re)crée le pager et remplit la file initiale, à chaque changement de
+  // filtre de genre (ou une fois les données utilisateur prêtes).
   useEffect(() => {
-    setQueue(
-      allNames
-        .filter((n) => !swipedIds.has(n.id))
-        .filter((n) => genderFilter === "both" || n.gender === genderFilter),
-    );
-  }, [allNames, swipedIds, genderFilter]);
+    if (!userReadyRef.current) return;
+    let cancelled = false;
+    setLoading(true);
+    setExhausted(false);
+    doneRef.current = false;
+    pagerRef.current = createNamePager(genderFilter);
+    setQueue([]);
+    (async () => {
+      await loadMore();
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [genderFilter, userDataVersion, loadMore]);
+
+  // Recharge dès que la file se vide (swipes / skips).
+  useEffect(() => {
+    if (loading || doneRef.current) return;
+    if (queue.length < REFILL_AT) loadMore();
+  }, [queue.length, loading, loadMore]);
 
   // La carte affichée est toujours la première de la file
   const current = queue[0];
@@ -109,7 +175,8 @@ const SwipePage = () => {
     // Match : le partenaire a déjà mis ce prénom en favori
     const isMatch = decision === "favorite" && partnerFavIds.has(name.id);
     animateOut(direction, () => {
-      setSwipedIds((prev) => new Set(prev).add(name.id));
+      swipedRef.current.add(name.id);
+      setQueue((q) => q.slice(1)); // retire la carte courante de la file
       if (isMatch) setMatchName(name.name);
     });
   };
@@ -321,10 +388,12 @@ const SwipePage = () => {
             </IconButton>
           </Box>
         </>
-      ) : (
+      ) : exhausted ? (
         <Typography variant="h6" color="text.secondary" align="center">
           Plus de prénoms pour le moment 🦊
         </Typography>
+      ) : (
+        <CircularProgress color="primary" />
       )}
 
       {/* Célébration d'un match */}

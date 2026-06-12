@@ -47,8 +47,9 @@ const App = () => {
         sx={{
           flex: 1,
           overflowY: "auto",
-          // Réserve l'espace de la navbar fixe (56px) + marge + zone sûre iOS
-          pb: "calc(56px + 24px + env(safe-area-inset-bottom))",
+          // Réserve la hauteur de la navbar fixe (56px de boutons + 16px de
+          // padding bas) + marge + zone sûre, pour ne pas masquer le contenu.
+          pb: "calc(56px + 16px + 16px + env(safe-area-inset-bottom))",
         }}
       >
         {tab === "swipe" && <SwipePage />}

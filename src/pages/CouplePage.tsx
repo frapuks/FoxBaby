@@ -23,6 +23,7 @@ import type { Gender } from "../constants/names";
 
 type Stats = { matches: number; mine: number; partner: number };
 type Filter = Gender | "both";
+type CoupleData = { couple: Couple | null; matches: Swipe[]; stats: Stats };
 
 const Stat = ({ value, label }: { value: number; label: string }) => (
   <Box sx={{ flex: 1, textAlign: "center" }}>
@@ -47,13 +48,12 @@ const CouplePage = () => {
   const [linking, setLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
+  // Récupère couple + favoris + matchs, sans toucher au state (réutilisable).
+  const fetchData = useCallback(async (): Promise<CoupleData | null> => {
+    if (!user) return null;
     const selfName =
       user.displayName || user.email?.split("@")[0] || "Parent";
     const c = await getMyCouple(user.uid, selfName).catch(() => null);
-    setCouple(c);
 
     const mine = await fetchFavorites(user.uid).catch(() => []);
     const partnerUid = c?.members.find((m) => m !== user.uid);
@@ -66,14 +66,36 @@ const CouplePage = () => {
       .filter((f) => mineIds.has(f.nameId))
       .sort((a, b) => a.name.localeCompare(b.name, "fr"));
 
-    setMatches(matched);
-    setStats({ matches: matched.length, mine: mine.length, partner: partnerFavs.length });
-    setLoading(false);
+    return {
+      couple: c,
+      matches: matched,
+      stats: {
+        matches: matched.length,
+        mine: mine.length,
+        partner: partnerFavs.length,
+      },
+    };
   }, [user]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    let cancelled = false;
+    fetchData()
+      .then((data) => {
+        if (cancelled) return;
+        if (data) {
+          setCouple(data.couple);
+          setMatches(data.matches);
+          setStats(data.stats);
+        }
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchData]);
 
   const handleLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +105,14 @@ const CouplePage = () => {
     try {
       await linkWithCode(user, code);
       setCode("");
-      await loadData();
+      setLoading(true);
+      const data = await fetchData();
+      if (data) {
+        setCouple(data.couple);
+        setMatches(data.matches);
+        setStats(data.stats);
+      }
+      setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Une erreur est survenue.");
     } finally {

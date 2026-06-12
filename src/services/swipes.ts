@@ -65,8 +65,9 @@ export const fetchFavorites = async (uid: string): Promise<Swipe[]> => {
   return snapshot.docs.map((d) => toSwipe(d.data()));
 };
 
-// Récupère tous les swipes de l'utilisateur (favoris + refusés)
-export const fetchSwipes = async (uid: string): Promise<Swipe[]> => {
-  const snapshot = await getDocs(swipesCol(uid));
+// Récupère les prénoms refusés par l'utilisateur (chargés à la demande)
+export const fetchRejected = async (uid: string): Promise<Swipe[]> => {
+  const q = query(swipesCol(uid), where("decision", "==", "rejected"));
+  const snapshot = await getDocs(q);
   return snapshot.docs.map((d) => toSwipe(d.data()));
 };

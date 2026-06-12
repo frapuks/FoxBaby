@@ -204,7 +204,9 @@ const ProfilePage = () => {
         </Button>
       </Box>
 
-      <EditProfileDialog open={editOpen} onClose={() => setEditOpen(false)} />
+      {editOpen && (
+        <EditProfileDialog open onClose={() => setEditOpen(false)} />
+      )}
       <ChangePasswordDialog
         open={passwordOpen}
         onClose={() => setPasswordOpen(false)}

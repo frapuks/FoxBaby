@@ -56,18 +56,23 @@ const seed = async () => {
 
   // id = sexe + slug, dédupliqué (évite les collisions entre variantes/sexes)
   const usedIds = new Set<string>();
-  const batch = writeBatch(db);
-  for (const item of NAMES) {
-    let id = `${item.gender}-${slugify(item.name)}`;
-    let suffix = 2;
-    while (usedIds.has(id)) id = `${item.gender}-${slugify(item.name)}-${suffix++}`;
-    usedIds.add(id);
-    batch.set(doc(db, "names", id), {
-      name: item.name,
-      gender: item.gender,
-    });
+  // Firestore limite un writeBatch à 500 opérations -> on écrit par lots de 450.
+  for (let i = 0; i < NAMES.length; i += 450) {
+    const batch = writeBatch(db);
+    for (const item of NAMES.slice(i, i + 450)) {
+      let id = `${item.gender}-${slugify(item.name)}`;
+      let suffix = 2;
+      while (usedIds.has(id)) id = `${item.gender}-${slugify(item.name)}-${suffix++}`;
+      usedIds.add(id);
+      batch.set(doc(db, "names", id), {
+        name: item.name,
+        gender: item.gender,
+        // Clé de tri aléatoire : permet une pagination dans un ordre quasi aléatoire.
+        rand: Math.random(),
+      });
+    }
+    await batch.commit();
   }
-  await batch.commit();
 
   console.log(
     `✅ ${removed} ancien(s) supprimé(s), ${NAMES.length} prénoms insérés dans "names".`,

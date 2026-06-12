@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "names",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "gender", "order": "ASCENDING" },
+        { "fieldPath": "rand", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

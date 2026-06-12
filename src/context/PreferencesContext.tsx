@@ -32,26 +32,36 @@ export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
   const [genderFilter, setGenderFilterState] = useState<GenderFilter>("both");
   const [avatar, setAvatarState] = useState<string>(DEFAULT_AVATAR);
 
-  // Charge les préférences de l'utilisateur depuis Firestore
+  // Charge les préférences de l'utilisateur depuis Firestore (ou les valeurs
+  // par défaut si déconnecté). Les setState sont faits dans la résolution async.
   useEffect(() => {
-    if (!user) {
-      setGenderFilterState("both");
-      setAvatarState(DEFAULT_AVATAR);
-      return;
-    }
-    getDoc(doc(db, "users", user.uid))
-      .then((snap) => {
-        const data = snap.data();
-        if (isGenderFilter(data?.genderFilter)) {
-          setGenderFilterState(data.genderFilter);
-        }
-        if (typeof data?.avatar === "string") {
-          setAvatarState(data.avatar);
-        }
+    let cancelled = false;
+    const loadPrefs = async (): Promise<{
+      genderFilter: GenderFilter;
+      avatar: string;
+    }> => {
+      if (!user) return { genderFilter: "both", avatar: DEFAULT_AVATAR };
+      const snap = await getDoc(doc(db, "users", user.uid));
+      const data = snap.data();
+      return {
+        genderFilter: isGenderFilter(data?.genderFilter)
+          ? data.genderFilter
+          : "both",
+        avatar: typeof data?.avatar === "string" ? data.avatar : DEFAULT_AVATAR,
+      };
+    };
+    loadPrefs()
+      .then((prefs) => {
+        if (cancelled) return;
+        setGenderFilterState(prefs.genderFilter);
+        setAvatarState(prefs.avatar);
       })
       .catch((err) =>
         console.error("Échec du chargement des préférences :", err),
       );
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   const persist = (data: Partial<{ genderFilter: GenderFilter; avatar: string }>) => {

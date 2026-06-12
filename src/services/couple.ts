@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   query,
   serverTimestamp,
   setDoc,
@@ -67,11 +68,14 @@ const reconcileLinkStatus = async (
   const userSnap = await getDoc(doc(db, "users", uid));
   const code = userSnap.data()?.linkCode as string | undefined;
   if (!code) return;
-  await setDoc(
-    doc(db, "linkCodes", code),
-    { coupleId },
-    { merge: true },
-  ).catch((err) => console.error("Échec de la synchro du statut de liaison :", err));
+  const codeRef = doc(db, "linkCodes", code);
+  const codeSnap = await getDoc(codeRef);
+  const current = (codeSnap.data()?.coupleId ?? null) as string | null;
+  // Déjà à jour : on évite une écriture inutile à chaque chargement de page.
+  if (current === (coupleId ?? null)) return;
+  await setDoc(codeRef, { coupleId }, { merge: true }).catch((err) =>
+    console.error("Échec de la synchro du statut de liaison :", err),
+  );
 };
 
 // Renvoie le couple auquel appartient l'utilisateur, ou null.
@@ -79,17 +83,22 @@ const reconcileLinkStatus = async (
 export const getMyCouple = async (
   uid: string,
   selfName?: string,
+  options: { reconcile?: boolean } = {},
 ): Promise<Couple | null> => {
+  // La réconciliation du statut de liaison (lectures + écriture éventuelle) n'est
+  // utile que sur les écrans de gestion du couple ; on peut la sauter ailleurs.
+  const { reconcile = true } = options;
   const q = query(
     collection(db, "couples"),
     where("members", "array-contains", uid),
+    limit(1),
   );
   const snapshot = await getDocs(q);
   const docSnap = snapshot.docs[0];
 
   if (!docSnap) {
     // Plus de couple : on s'assure que le drapeau est effacé.
-    await reconcileLinkStatus(uid, null);
+    if (reconcile) await reconcileLinkStatus(uid, null);
     return null;
   }
 
@@ -101,7 +110,7 @@ export const getMyCouple = async (
   };
 
   // Marque ce compte comme lié.
-  await reconcileLinkStatus(uid, couple.id);
+  if (reconcile) await reconcileLinkStatus(uid, couple.id);
 
   // Rafraîchit le nom du membre s'il a changé (#5).
   if (selfName && couple.memberNames[uid] !== selfName) {
