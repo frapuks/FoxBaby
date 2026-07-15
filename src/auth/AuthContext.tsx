@@ -6,46 +6,67 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  createUserWithEmailAndPassword,
-  EmailAuthProvider,
-  onAuthStateChanged,
-  reauthenticateWithCredential,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  updatePassword,
-  updateProfile,
-  verifyBeforeUpdateEmail,
-  type User,
-} from "firebase/auth";
-import { auth, googleProvider } from "../firebase";
+import { api } from "../api";
+
+export type GenderFilter = "boy" | "girl" | "both";
+
+// Utilisateur public renvoyé par le backend.
+type PublicUser = {
+  id: string;
+  email: string;
+  displayName: string;
+  avatar: string;
+  genderFilter: GenderFilter;
+  hasPassword: boolean;
+};
+
+// Forme consommée par l'app. `uid` conserve le nom historique (ex-Firebase).
+export type AppUser = {
+  uid: string;
+  email: string;
+  displayName: string;
+  avatar: string;
+  genderFilter: GenderFilter;
+  hasPassword: boolean;
+};
+
+const toAppUser = (u: PublicUser): AppUser => ({
+  uid: u.id,
+  email: u.email,
+  displayName: u.displayName,
+  avatar: u.avatar,
+  genderFilter: u.genderFilter,
+  hasPassword: u.hasPassword,
+});
+
+type ProfileFields = { displayName?: string; avatar?: string; genderFilter?: GenderFilter };
 
 type AuthContextValue = {
-  user: User | null;
+  user: AppUser | null;
   loading: boolean;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
   updateName: (name: string) => Promise<void>;
-  reauthenticate: (currentPassword: string) => Promise<void>;
-  updateUserEmail: (email: string) => Promise<void>;
-  updateUserPassword: (password: string) => Promise<void>;
+  patchProfile: (fields: ProfileFields) => Promise<AppUser>;
+  updateUserEmail: (email: string, currentPassword?: string) => Promise<void>;
+  updateUserPassword: (currentPassword: string | null, newPassword: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Restaure la session au démarrage à partir du cookie httpOnly.
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
-    });
-    return unsubscribe;
+    api
+      .get<{ user: PublicUser }>("/auth/me")
+      .then((r) => setUser(toAppUser(r.user)))
+      .catch(() => setUser(null))
+      .finally(() => setLoading(false));
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -53,41 +74,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       user,
       loading,
       signInWithEmail: async (email, password) => {
-        await signInWithEmailAndPassword(auth, email, password);
+        const r = await api.post<{ user: PublicUser }>("/auth/login", { email, password });
+        setUser(toAppUser(r.user));
       },
       signUpWithEmail: async (email, password) => {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const r = await api.post<{ user: PublicUser }>("/auth/register", { email, password });
+        setUser(toAppUser(r.user));
       },
-      signInWithGoogle: async () => {
-        await signInWithPopup(auth, googleProvider);
+      signInWithGoogle: async (idToken) => {
+        const r = await api.post<{ user: PublicUser }>("/auth/google", { idToken });
+        setUser(toAppUser(r.user));
       },
       logout: async () => {
-        await signOut(auth);
+        await api.post("/auth/logout");
+        setUser(null);
       },
       updateName: async (name) => {
-        if (!auth.currentUser) throw new Error("Aucun utilisateur connecté");
-        await updateProfile(auth.currentUser, { displayName: name });
-        // Force un rafraîchissement de l'objet user pour refléter le nouveau nom
-        setUser({ ...auth.currentUser });
+        const r = await api.patch<{ user: PublicUser }>("/auth/profile", { displayName: name });
+        setUser(toAppUser(r.user));
       },
-      reauthenticate: async (currentPassword) => {
-        if (!auth.currentUser?.email)
-          throw new Error("Aucun utilisateur connecté");
-        const credential = EmailAuthProvider.credential(
-          auth.currentUser.email,
-          currentPassword,
-        );
-        await reauthenticateWithCredential(auth.currentUser, credential);
+      patchProfile: async (fields) => {
+        const r = await api.patch<{ user: PublicUser }>("/auth/profile", fields);
+        const u = toAppUser(r.user);
+        setUser(u);
+        return u;
       },
-      updateUserEmail: async (email) => {
-        if (!auth.currentUser) throw new Error("Aucun utilisateur connecté");
-        // Envoie un email de vérification à la nouvelle adresse ; le changement
-        // ne prend effet qu'une fois le lien confirmé.
-        await verifyBeforeUpdateEmail(auth.currentUser, email);
+      updateUserEmail: async (email, currentPassword) => {
+        const r = await api.patch<{ user: PublicUser }>("/auth/email", { email, currentPassword });
+        setUser(toAppUser(r.user));
       },
-      updateUserPassword: async (password) => {
-        if (!auth.currentUser) throw new Error("Aucun utilisateur connecté");
-        await updatePassword(auth.currentUser, password);
+      updateUserPassword: async (currentPassword, newPassword) => {
+        await api.patch("/auth/password", {
+          currentPassword: currentPassword ?? undefined,
+          newPassword,
+        });
       },
     }),
     [user, loading],

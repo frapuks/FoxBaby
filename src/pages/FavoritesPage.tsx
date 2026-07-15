@@ -99,7 +99,7 @@ const FavoritesPage = () => {
   // majoritaires, ne sont pas affichés par défaut).
   useEffect(() => {
     if (!user) return;
-    fetchFavorites(user.uid)
+    fetchFavorites()
       .then((favs) => setFavorites(sortByName(favs)))
       .finally(() => setLoading(false));
   }, [user]);
@@ -109,7 +109,7 @@ const FavoritesPage = () => {
     setShowRejected(checked);
     if (!checked || rejectedLoaded || rejectedLoading || !user) return;
     setRejectedLoading(true);
-    fetchRejected(user.uid)
+    fetchRejected()
       .then((rej) => {
         setRejected(sortByName(rej));
         setRejectedLoaded(true);
@@ -125,7 +125,7 @@ const FavoritesPage = () => {
     if (!user) return;
     setFavorites((prev) => prev.filter((s) => s.nameId !== nameId));
     setRejected((prev) => prev.filter((s) => s.nameId !== nameId));
-    deleteSwipe(user.uid, nameId).catch((err) =>
+    deleteSwipe(nameId).catch((err) =>
       console.error("Échec de la suppression du swipe :", err),
     );
   };
@@ -224,7 +224,6 @@ const FavoritesPage = () => {
 
       {addOpen && user && (
         <AddFavoriteDialog
-          uid={user.uid}
           existingFavoriteIds={new Set(favorites.map((f) => f.nameId))}
           onClose={() => setAddOpen(false)}
           onAdded={handleFavoriteAdded}

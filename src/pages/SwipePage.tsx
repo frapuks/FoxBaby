@@ -24,12 +24,11 @@ import SwipeIcon from "@mui/icons-material/Swipe";
 import type { NameDoc } from "../services/names";
 import { createNamePager } from "../services/names";
 import {
-  fetchFavorites,
+  fetchPartnerFavorites,
   fetchSwipedIds,
   recordSwipe,
   type Decision,
 } from "../services/swipes";
-import { getMyCouple } from "../services/couple";
 import { usePreferences } from "../context/PreferencesContext";
 import { useAuth } from "../auth/AuthContext";
 
@@ -98,25 +97,14 @@ const SwipePage = () => {
     if (!user) return;
     userReadyRef.current = false;
     let cancelled = false;
-    const loadPartnerFavs = async () => {
-      // Pas besoin de réconcilier le statut de liaison ici (fait sur les
-      // écrans couple/profil) : on veut juste l'uid du partenaire.
-      const couple = await getMyCouple(user.uid, undefined, {
-        reconcile: false,
-      }).catch(() => null);
-      const partnerUid = couple?.members.find((m) => m !== user.uid);
-      if (!partnerUid) return new Set<string>();
-      const favs = await fetchFavorites(partnerUid).catch(() => []);
-      return new Set(favs.map((f) => f.nameId));
-    };
     (async () => {
       const [swiped, partnerFavs] = await Promise.all([
-        fetchSwipedIds(user.uid).catch(() => new Set<string>()),
-        loadPartnerFavs(),
+        fetchSwipedIds().catch(() => new Set<string>()),
+        fetchPartnerFavorites().catch(() => []),
       ]);
       if (cancelled) return;
       swipedRef.current = swiped;
-      setPartnerFavIds(partnerFavs);
+      setPartnerFavIds(new Set(partnerFavs.map((f) => f.nameId)));
       userReadyRef.current = true;
       setUserDataVersion((v) => v + 1);
     })();
@@ -169,7 +157,7 @@ const SwipePage = () => {
   const decide = (decision: Decision, direction: "left" | "right") => {
     if (!user || !current) return;
     const name = current;
-    recordSwipe(user.uid, name, decision).catch((err) =>
+    recordSwipe(name, decision).catch((err) =>
       console.error("Échec de l'enregistrement du swipe :", err),
     );
     // Match : le partenaire a déjà mis ce prénom en favori

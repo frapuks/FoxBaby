@@ -1,0 +1,22 @@
+{
+  "name": "foxbaby-migration",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "export": "tsx export-firebase.ts",
+    "import": "tsx import.ts"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.4.2",
+    "firebase-admin": "^13.6.0",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.3",
+    "@types/pg": "^8.15.0",
+    "tsx": "^4.22.4",
+    "typescript": "~6.0.2"
+  }
+}

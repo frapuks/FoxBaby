@@ -23,14 +23,12 @@ import { searchNames, type NameDoc } from "../services/names";
 import { recordSwipe, type Swipe } from "../services/swipes";
 
 type AddFavoriteDialogProps = {
-  uid: string;
   existingFavoriteIds: Set<string>;
   onClose: () => void;
   onAdded: (swipe: Swipe) => void;
 };
 
 const AddFavoriteDialog = ({
-  uid,
   existingFavoriteIds,
   onClose,
   onAdded,
@@ -66,7 +64,7 @@ const AddFavoriteDialog = ({
   };
 
   const handleAdd = (nameDoc: NameDoc) => {
-    recordSwipe(uid, nameDoc, "favorite").catch((err) =>
+    recordSwipe(nameDoc, "favorite").catch((err) =>
       console.error("Échec de l'ajout du favori :", err),
     );
     setAdded((prev) => new Set(prev).add(nameDoc.id));

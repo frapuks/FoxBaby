@@ -27,3 +27,6 @@ firebase-debug.log
 *.njsproj
 *.sln
 *.sw?
+
+# Config Claude (locale, non versionnée)
+.claude/
