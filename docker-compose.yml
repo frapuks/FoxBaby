@@ -19,7 +19,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-foxbaby}
       POSTGRES_DB: ${POSTGRES_DB:-foxbaby}
     ports:
-      - "5432:5432" # exposé pour le dev local ; retirable en prod
+      # Écoute locale uniquement (jamais exposé publiquement, même sur un Pi partagé).
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -59,14 +60,12 @@ services:
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
-      - "${HTTP_PORT:-8080}:80"
-      - "${HTTPS_PORT:-8443}:443"
+      # Écoute en local seulement : c'est le Nginx de l'hôte qui expose le
+      # sous-domaine en HTTPS et proxifie vers ce port. (Le HTTPS n'est donc PAS
+      # géré par Caddy ici.) En dev local, accessible via http://localhost:8080.
+      - "127.0.0.1:${FOXBABY_HTTP_PORT:-8080}:80"
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
