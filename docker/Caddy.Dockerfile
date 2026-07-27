@@ -1,7 +1,10 @@
 # Construit le front (Vite) puis produit une image Caddy servant les fichiers
 # statiques + reverse-proxy vers le backend. Contexte de build = racine du dépôt.
-
-FROM node:22-alpine AS build
+#
+# Image glibc (Debian) et non Alpine : Rolldown (bundler de Vite 8) ne publie pas
+# de binaire natif pour ARM 32 bits + musl (Alpine), mais en fournit un pour ARM
+# 32 bits glibc (linux-arm-gnueabihf). Indispensable pour builder sur un Pi 32 bits.
+FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
