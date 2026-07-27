@@ -1,0 +1,23 @@
+# Override pour intégrer FoxBaby à Nginx Proxy Manager (NPM).
+#
+# NPM tourne en conteneur : il ne peut pas joindre 127.0.0.1:6010 de l'hôte.
+# On attache donc le conteneur Caddy au réseau Docker de NPM, où il devient
+# joignable par l'alias "foxbaby" (port 80).
+#
+# Usage sur le Pi (en plus du compose de base) :
+#   docker compose --env-file deploy.env -f docker-compose.yml -f docker-compose.npm.yml up -d
+#
+# NPM_NETWORK = nom du réseau Docker de NPM (voir `docker network ls`).
+
+services:
+  caddy:
+    networks:
+      default: {} # réseau interne FoxBaby (pour joindre le backend)
+      npm: # réseau de NPM (pour être joignable par NPM)
+        aliases:
+          - foxbaby
+
+networks:
+  npm:
+    external: true
+    name: ${NPM_NETWORK}
