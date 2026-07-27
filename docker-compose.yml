@@ -20,7 +20,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-foxbaby}
     ports:
       # Écoute locale uniquement (jamais exposé publiquement, même sur un Pi partagé).
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${FOXBABY_DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -44,8 +44,10 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
       PORT: "3000"
-    expose:
-      - "3000"
+    ports:
+      # Publié en local uniquement (accès direct/debug de l'API ; l'app passe par
+      # /api via Caddy, ce port n'est pas nécessaire à son fonctionnement).
+      - "127.0.0.1:${FOXBABY_API_PORT:-3000}:3000"
 
   caddy:
     build:
