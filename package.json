@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "seed:names": "tsx scripts/seedNames.ts"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -16,7 +15,6 @@
     "@fontsource/quicksand": "^5.2.10",
     "@mui/icons-material": "^9.1.0",
     "@mui/material": "^9.1.0",
-    "firebase": "^12.14.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

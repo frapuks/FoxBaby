@@ -12,7 +12,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { FirebaseError } from "firebase/app";
+import { ApiError } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import { usePreferences } from "../context/PreferencesContext";
 import { AVATARS } from "../constants/avatars";
@@ -22,29 +22,11 @@ type EditProfileDialogProps = {
   onClose: () => void;
 };
 
-const errorMessage = (err: unknown): string => {
-  if (err instanceof FirebaseError) {
-    switch (err.code) {
-      case "auth/wrong-password":
-      case "auth/invalid-credential":
-        return "Mot de passe actuel incorrect.";
-      case "auth/requires-recent-login":
-        return "Pour des raisons de sécurité, reconnectez-vous puis réessayez.";
-      case "auth/email-already-in-use":
-        return "Cet email est déjà utilisé.";
-      case "auth/invalid-email":
-        return "Adresse email invalide.";
-      case "auth/operation-not-allowed":
-        return "Changement d'email impossible : vérifiez d'abord votre nouvelle adresse.";
-      default:
-        return "Une erreur est survenue. Réessayez.";
-    }
-  }
-  return "Une erreur est survenue. Réessayez.";
-};
+const errorMessage = (err: unknown): string =>
+  err instanceof ApiError ? err.message : "Une erreur est survenue. Réessayez.";
 
 const EditProfileDialog = ({ open, onClose }: EditProfileDialogProps) => {
-  const { user, updateName, reauthenticate, updateUserEmail } = useAuth();
+  const { user, updateName, updateUserEmail } = useAuth();
   const { avatar, setAvatar } = usePreferences();
 
   const [name, setName] = useState(user?.displayName ?? "");
@@ -52,36 +34,26 @@ const EditProfileDialog = ({ open, onClose }: EditProfileDialogProps) => {
   const [selectedAvatar, setSelectedAvatar] = useState(avatar);
   const [currentPassword, setCurrentPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const emailChanged = email !== (user?.email ?? "");
 
   const handleSave = async () => {
     setError(null);
-    setInfo(null);
     setSubmitting(true);
     try {
-      if (emailChanged) {
-        await reauthenticate(currentPassword);
-      }
       if (name !== (user?.displayName ?? "")) {
         await updateName(name);
       }
-      setAvatar(selectedAvatar);
-      setCurrentPassword("");
-
-      if (emailChanged) {
-        // Changement d'email : vérification requise, l'email ne change pas encore.
-        await updateUserEmail(email);
-        setEmail(user?.email ?? "");
-        setInfo(
-          "Un email de confirmation a été envoyé à votre nouvelle adresse. " +
-            "Le changement sera effectif après validation du lien.",
-        );
-      } else {
-        onClose();
+      if (selectedAvatar !== avatar) {
+        setAvatar(selectedAvatar);
       }
+      // Changement d'email : ré-authentification par mot de passe si le compte en a un.
+      if (emailChanged) {
+        await updateUserEmail(email, currentPassword || undefined);
+      }
+      setCurrentPassword("");
+      onClose();
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -96,11 +68,6 @@ const EditProfileDialog = ({ open, onClose }: EditProfileDialogProps) => {
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
-          </Alert>
-        )}
-        {info && (
-          <Alert severity="success" sx={{ mb: 2 }}>
-            {info}
           </Alert>
         )}
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -152,7 +119,7 @@ const EditProfileDialog = ({ open, onClose }: EditProfileDialogProps) => {
             onChange={(e) => setEmail(e.target.value)}
             fullWidth
           />
-          {emailChanged && (
+          {emailChanged && (user?.hasPassword ?? false) && (
             <>
               <Typography variant="caption" color="text.secondary">
                 Confirmez votre mot de passe actuel pour modifier l'email.

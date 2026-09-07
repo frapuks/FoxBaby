@@ -18,7 +18,7 @@ import PartnerLinkCard from "../components/PartnerLinkCard";
 import GenderFilterButtons from "../components/GenderFilterButtons";
 import SectionTitle from "../components/SectionTitle";
 import { getMyCouple, linkWithCode, type Couple } from "../services/couple";
-import { fetchFavorites, type Swipe } from "../services/swipes";
+import { fetchFavorites, fetchPartnerFavorites, type Swipe } from "../services/swipes";
 import type { Gender } from "../constants/names";
 
 type Stats = { matches: number; mine: number; partner: number };
@@ -51,15 +51,10 @@ const CouplePage = () => {
   // Récupère couple + favoris + matchs, sans toucher au state (réutilisable).
   const fetchData = useCallback(async (): Promise<CoupleData | null> => {
     if (!user) return null;
-    const selfName =
-      user.displayName || user.email?.split("@")[0] || "Parent";
-    const c = await getMyCouple(user.uid, selfName).catch(() => null);
+    const c = await getMyCouple().catch(() => null);
 
-    const mine = await fetchFavorites(user.uid).catch(() => []);
-    const partnerUid = c?.members.find((m) => m !== user.uid);
-    const partnerFavs = partnerUid
-      ? await fetchFavorites(partnerUid).catch(() => [])
-      : [];
+    const mine = await fetchFavorites().catch(() => []);
+    const partnerFavs = c ? await fetchPartnerFavorites().catch(() => []) : [];
 
     const mineIds = new Set(mine.map((f) => f.nameId));
     const matched = partnerFavs
@@ -103,7 +98,7 @@ const CouplePage = () => {
     setError(null);
     setLinking(true);
     try {
-      await linkWithCode(user, code);
+      await linkWithCode(code);
       setCode("");
       setLoading(true);
       const data = await fetchData();

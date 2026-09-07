@@ -1,0 +1,18 @@
+# SITE_ADDRESS pilote l'écoute et le TLS :
+#   - local  : ":80"  (HTTP simple)
+#   - prod   : "foxbaby.example.com"  → Caddy provisionne automatiquement HTTPS (Let's Encrypt)
+{$SITE_ADDRESS} {
+	encode gzip
+
+	# Les appels API sont proxifiés vers le backend (chemin /api conservé).
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+
+	# Tout le reste : fichiers statiques du front, avec repli SPA sur index.html.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

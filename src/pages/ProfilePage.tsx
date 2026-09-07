@@ -43,27 +43,23 @@ const ProfilePage = () => {
   const [unlinking, setUnlinking] = useState(false);
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Parent";
-  const hasPasswordProvider =
-    user?.providerData.some((p) => p.providerId === "password") ?? false;
+  const hasPasswordProvider = user?.hasPassword ?? false;
 
   useEffect(() => {
     if (!user) return;
-    getMyCouple(user.uid, displayName)
+    getMyCouple()
       .then(setCouple)
       .catch(() => setCouple(null))
       .finally(() => setCoupleLoading(false));
-  }, [user, displayName]);
+  }, [user]);
 
-  const partnerName =
-    couple && user
-      ? couple.memberNames[couple.members.find((m) => m !== user.uid) ?? ""]
-      : undefined;
+  const partnerName = couple?.partner.displayName;
 
   const handleUnlink = async () => {
     if (!couple) return;
     setUnlinking(true);
     try {
-      await unlinkCouple(couple.id);
+      await unlinkCouple();
       setCouple(null);
       setUnlinkOpen(false);
     } catch (err) {

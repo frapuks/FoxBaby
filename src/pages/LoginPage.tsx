@@ -10,34 +10,15 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import GoogleIcon from "@mui/icons-material/Google";
-import { FirebaseError } from "firebase/app";
+import { ApiError } from "../api";
 import { useAuth } from "../auth/AuthContext";
+import GoogleSignInButton from "../auth/GoogleSignInButton";
 
-const errorMessage = (err: unknown): string => {
-  if (err instanceof FirebaseError) {
-    switch (err.code) {
-      case "auth/invalid-credential":
-      case "auth/wrong-password":
-      case "auth/user-not-found":
-        return "Email ou mot de passe incorrect.";
-      case "auth/email-already-in-use":
-        return "Un compte existe déjà avec cet email.";
-      case "auth/weak-password":
-        return "Le mot de passe doit contenir au moins 6 caractères.";
-      case "auth/invalid-email":
-        return "Adresse email invalide.";
-      case "auth/popup-closed-by-user":
-        return "Connexion Google annulée.";
-      default:
-        return "Une erreur est survenue. Réessayez.";
-    }
-  }
-  return "Une erreur est survenue. Réessayez.";
-};
+const errorMessage = (err: unknown): string =>
+  err instanceof ApiError ? err.message : "Une erreur est survenue. Réessayez.";
 
 const LoginPage = () => {
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle } = useAuth();
+  const { signInWithEmail, signUpWithEmail } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -54,18 +35,6 @@ const LoginPage = () => {
       } else {
         await signInWithEmail(email, password);
       }
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleGoogle = async () => {
-    setError(null);
-    setSubmitting(true);
-    try {
-      await signInWithGoogle();
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -158,17 +127,8 @@ const LoginPage = () => {
       {/* Séparateur */}
       <Divider sx={{ my: 3 }}>OU</Divider>
 
-      {/* Connexion Google */}
-      <Button
-        variant="outlined"
-        size="large"
-        fullWidth
-        startIcon={<GoogleIcon />}
-        onClick={handleGoogle}
-        disabled={submitting}
-      >
-        Continuer avec Google
-      </Button>
+      {/* Connexion Google (bouton GIS, ou repli désactivé si non configuré) */}
+      <GoogleSignInButton onError={setError} />
 
       {/* Bascule connexion / création de compte */}
       <Typography variant="body2" align="center" sx={{ mt: 4 }}>

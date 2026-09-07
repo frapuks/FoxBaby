@@ -12,11 +12,6 @@ dist
 dist-ssr
 *.local
 
-# Firebase
-.firebase
-.firebase/
-firebase-debug.log
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -27,3 +22,6 @@ firebase-debug.log
 *.njsproj
 *.sln
 *.sw?
+
+# Config Claude (locale, non versionnée)
+.claude/

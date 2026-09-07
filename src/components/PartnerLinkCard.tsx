@@ -20,7 +20,7 @@ export const PartnerLinkContent = () => {
 
   useEffect(() => {
     if (!user) return;
-    ensureLinkCode(user)
+    ensureLinkCode()
       .then(setLinkCode)
       .catch((err) => console.error("Échec de la génération du code :", err));
   }, [user]);

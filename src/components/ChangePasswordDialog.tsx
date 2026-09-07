@@ -16,7 +16,7 @@ import {
 } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
-import { FirebaseError } from "firebase/app";
+import { ApiError } from "../api";
 import { useAuth } from "../auth/AuthContext";
 
 type ChangePasswordDialogProps = {
@@ -24,22 +24,8 @@ type ChangePasswordDialogProps = {
   onClose: () => void;
 };
 
-const errorMessage = (err: unknown): string => {
-  if (err instanceof FirebaseError) {
-    switch (err.code) {
-      case "auth/wrong-password":
-      case "auth/invalid-credential":
-        return "Mot de passe actuel incorrect.";
-      case "auth/requires-recent-login":
-        return "Pour des raisons de sécurité, reconnectez-vous puis réessayez.";
-      case "auth/weak-password":
-        return "Le nouveau mot de passe est trop faible.";
-      default:
-        return "Une erreur est survenue. Réessayez.";
-    }
-  }
-  return "Une erreur est survenue. Réessayez.";
-};
+const errorMessage = (err: unknown): string =>
+  err instanceof ApiError ? err.message : "Une erreur est survenue. Réessayez.";
 
 type Strength = {
   score: number;
@@ -63,7 +49,7 @@ const evaluateStrength = (password: string): Strength => {
 const MIN_LENGTH = 6;
 
 const ChangePasswordDialog = ({ open, onClose }: ChangePasswordDialogProps) => {
-  const { reauthenticate, updateUserPassword } = useAuth();
+  const { updateUserPassword } = useAuth();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -103,8 +89,7 @@ const ChangePasswordDialog = ({ open, onClose }: ChangePasswordDialogProps) => {
     setError(null);
     setSubmitting(true);
     try {
-      await reauthenticate(currentPassword);
-      await updateUserPassword(newPassword);
+      await updateUserPassword(currentPassword, newPassword);
       reset();
       onClose();
     } catch (err) {

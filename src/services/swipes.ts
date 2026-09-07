@@ -1,14 +1,4 @@
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  query,
-  serverTimestamp,
-  setDoc,
-  where,
-} from "firebase/firestore";
-import { db } from "../firebase";
+import { api } from "../api";
 import type { NameDoc } from "./names";
 
 export type Decision = "favorite" | "rejected";
@@ -20,54 +10,38 @@ export type Swipe = {
   decision: Decision;
 };
 
-const swipesCol = (uid: string) => collection(db, "users", uid, "swipes");
-
-// Enregistre (ou met à jour) le choix de l'utilisateur pour un prénom
-export const recordSwipe = async (
-  uid: string,
-  name: NameDoc,
-  decision: Decision,
-): Promise<void> => {
-  await setDoc(doc(swipesCol(uid), name.id), {
-    nameId: name.id,
-    name: name.name,
-    gender: name.gender,
-    decision,
-    updatedAt: serverTimestamp(),
-  });
+// Enregistre (ou met à jour) le choix de l'utilisateur pour un prénom.
+export const recordSwipe = async (name: NameDoc, decision: Decision): Promise<void> => {
+  await api.put(`/swipes/${encodeURIComponent(name.id)}`, { decision });
 };
 
-// Supprime le choix de l'utilisateur pour un prénom (le remet dans la pile)
-export const deleteSwipe = async (
-  uid: string,
-  nameId: string,
-): Promise<void> => {
-  await deleteDoc(doc(swipesCol(uid), nameId));
+// Supprime le choix de l'utilisateur pour un prénom (le remet dans la pile).
+export const deleteSwipe = async (nameId: string): Promise<void> => {
+  await api.del(`/swipes/${encodeURIComponent(nameId)}`);
 };
 
-// Récupère les ids des prénoms déjà tranchés (favoris ou refusés)
-export const fetchSwipedIds = async (uid: string): Promise<Set<string>> => {
-  const snapshot = await getDocs(swipesCol(uid));
-  return new Set(snapshot.docs.map((d) => d.id));
+// Récupère les ids des prénoms déjà tranchés (favoris ou refusés).
+export const fetchSwipedIds = async (): Promise<Set<string>> => {
+  const { ids } = await api.get<{ ids: string[] }>("/swipes/ids");
+  return new Set(ids);
 };
 
-const toSwipe = (data: Record<string, unknown>): Swipe => ({
-  nameId: data.nameId as string,
-  name: data.name as string,
-  gender: data.gender as NameDoc["gender"],
-  decision: data.decision as Decision,
-});
-
-// Récupère les prénoms mis en favoris par l'utilisateur
-export const fetchFavorites = async (uid: string): Promise<Swipe[]> => {
-  const q = query(swipesCol(uid), where("decision", "==", "favorite"));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => toSwipe(d.data()));
+// Récupère les prénoms mis en favori par l'utilisateur.
+export const fetchFavorites = async (): Promise<Swipe[]> => {
+  const { swipes } = await api.get<{ swipes: Swipe[] }>("/swipes/favorites");
+  return swipes;
 };
 
-// Récupère les prénoms refusés par l'utilisateur (chargés à la demande)
-export const fetchRejected = async (uid: string): Promise<Swipe[]> => {
-  const q = query(swipesCol(uid), where("decision", "==", "rejected"));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => toSwipe(d.data()));
+// Récupère les prénoms refusés par l'utilisateur (chargés à la demande).
+export const fetchRejected = async (): Promise<Swipe[]> => {
+  const { swipes } = await api.get<{ swipes: Swipe[] }>("/swipes/rejected");
+  return swipes;
+};
+
+// Récupère les favoris du partenaire (pour les matchs). [] si non lié.
+export const fetchPartnerFavorites = async (): Promise<Swipe[]> => {
+  const { favorites } = await api.get<{ favorites: Omit<Swipe, "decision">[] }>(
+    "/couple/partner-favorites",
+  );
+  return favorites.map((f) => ({ ...f, decision: "favorite" }));
 };

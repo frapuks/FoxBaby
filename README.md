@@ -18,44 +18,101 @@ FoxBaby est une application mobile de choix de prénom pour un bébé à naître
 - **Liaison de couple** : chaque parent a un code de liaison à partager ; l'autre saisit ce code pour relier les deux comptes.
 - **Page Couple** : stats du couple (matchs, favoris de chacun) et liste des prénoms matchés, filtrable par sexe.
 - **Profil** : avatar (animal au choix), nom, email, mot de passe, filtre de genre des prénoms, gestion de la liaison.
-- **Authentification** : email/mot de passe et Google (Firebase Auth).
+- **Authentification** : email/mot de passe (JWT en cookie httpOnly) et Google (OAuth).
 
-## Stack technique
+## Architecture
 
-- React + TypeScript + Vite
-- Material UI (MUI) + police Quicksand
-- Firebase (Auth + Cloud Firestore)
+Application self-hosted (Raspberry Pi), 100 % conteneurisée :
 
-## Configuration
+```
+Internet ─HTTPS→ Cloudflare ─→ Nginx Proxy Manager ─→ [ Caddy ] ─→ front statique + /api
+                                (HTTPS, hôte)          (conteneur)      │
+                                                                   [ Node/Express ] ─→ [ PostgreSQL ]
+```
 
-1. Copier `.env.example` vers `.env.local` et renseigner la config Firebase (`VITE_FIREBASE_*`).
-2. Activer dans la console Firebase : **Authentication** (Email/mot de passe + Google) et **Cloud Firestore**.
-3. Publier les règles de sécurité du fichier [`firestore.rules`](firestore.rules).
+- **Front** : React + TypeScript + Vite, Material UI (MUI), police Quicksand.
+- **Backend** : Node + Express + TypeScript, `pg` (SQL brut), auth maison JWT (bcrypt + Google OAuth).
+- **Base** : PostgreSQL (schéma relationnel, vraies clés étrangères).
+- **Reverse-proxy interne** : Caddy (sert le front + proxifie `/api` vers le backend).
+- **Exposition** : Nginx Proxy Manager (HTTPS) + Cloudflare, en frontal sur le Pi.
 
-## Données
+## Structure du dépôt
 
-- Les prénoms vivent dans la collection Firestore `names`.
-- Pour (ré)injecter le jeu de prénoms depuis [`src/constants/names.ts`](src/constants/names.ts) :
+```
+/                 front React (Vite)
+  src/            code du front (pages, composants, services, contexte auth)
+  server/         backend Node/Express + migrations SQL + seed  (voir server/README.md)
+  migration/      scripts one-shot Firebase → Postgres           (voir migration/README.md)
+  docker/         Caddyfile, Dockerfile front, vhost Nginx d'exemple
+  docker-compose.yml         stack : postgres + backend + caddy
+  docker-compose.npm.yml     override : branche Caddy au réseau de Nginx Proxy Manager
+  deploy.env.example         variables de déploiement (à copier en deploy.env)
+```
 
-  ```bash
-  npm run seed:names
-  ```
+## Modèle de données (PostgreSQL)
 
-  ⚠️ Le seed utilise le SDK web : autoriser temporairement l'écriture sur `names`
-  dans les règles Firestore le temps de l'exécution, puis rétablir
-  `allow write: if false;`.
+- `users` — `id, email, password_hash?, google_sub?, display_name, avatar, gender_filter, link_code?`
+- `names` — `id, slug, name, gender, rand`
+- `swipes` — `user_id → users, name_id → names, decision (favorite|rejected)` (PK composite)
+- `couples` + `couple_members` — un couple relie exactement deux `users` (unicité : un user dans au plus un couple)
 
-## Modèle de données Firestore
+Les matchs, favoris du partenaire et exclusion des prénoms déjà vus sont calculés en SQL (jointures).
 
-- `names/{id}` — `{ name, gender }`
-- `users/{uid}` — `{ linkCode, avatar, genderFilter }`
-- `users/{uid}/swipes/{nameId}` — `{ nameId, name, gender, decision }`
-- `linkCodes/{CODE}` — `{ uid, name, coupleId? }`
-- `couples/{id}` — `{ members: [uidA, uidB], memberNames }`
+## Développement local
 
-## Démarrage
+Prérequis : Node 22+ et Docker.
+
+### Option A — boucle rapide (front & back lancés à la main)
 
 ```bash
-npm install
-npm run dev
+# 1) Postgres seul
+docker compose up -d postgres
+
+# 2) Backend (dossier server/) : voir server/README.md pour le détail
+cd server && npm install && npm run migrate && npm run seed:names && npm run dev
+# API sur http://localhost:3000
+
+# 3) Front (à la racine, autre terminal)
+npm install && npm run dev
+# Front sur http://localhost:5173
 ```
+
+Config front : copier `.env.example` → `.env.local` (`VITE_API_BASE_URL=http://localhost:3000/api`, `VITE_GOOGLE_CLIENT_ID` optionnel).
+Config back : `server/.env` (voir `server/.env.example`).
+
+### Option B — stack complète en conteneurs
+
+```bash
+docker compose up -d --build          # → http://localhost:8080
+```
+
+Pour activer Google en local et régler les ports/secrets, utiliser un fichier d'env :
+`docker compose --env-file deploy.env.local up -d --build` (voir `deploy.env.example`).
+
+## Variables d'environnement
+
+**Backend** (`server/.env`) : `DATABASE_URL`, `PORT`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `COOKIE_SECURE`, `CORS_ORIGIN`.
+**Front** (`.env.local`, injecté au build) : `VITE_API_BASE_URL`, `VITE_GOOGLE_CLIENT_ID`.
+
+## Déploiement (Raspberry Pi)
+
+Le Pi héberge déjà d'autres sites derrière **Nginx Proxy Manager** ; FoxBaby s'y branche sans y toucher.
+
+1. `cp deploy.env.example deploy.env` et renseigner les secrets (Postgres, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `NPM_NETWORK`, ports…).
+2. Lancer la stack en la connectant au réseau de NPM :
+   ```bash
+   docker compose --env-file deploy.env -f docker-compose.yml -f docker-compose.npm.yml up -d --build
+   ```
+3. Dans Nginx Proxy Manager, créer un **Proxy Host** : domaine → `foxbaby` (forward host) port `80`.
+4. HTTPS : certificat via Let's Encrypt (DNS direct) ou **certificat d'origine Cloudflare** si le domaine est proxifié (orange). SSL Cloudflare en **Full (strict)**.
+
+Le backend applique les migrations et seede les prénoms automatiquement au démarrage (idempotent).
+
+## Migration des données (Firebase → Postgres)
+
+Scripts one-shot dans [`migration/`](migration/README.md) : export depuis Firebase (Auth + Firestore) puis import dans Postgres. Les comptes email reçoivent un mot de passe par défaut ; les comptes Google se reconnectent via leur `google_sub`.
+
+## Scripts
+
+**Front (racine)** : `npm run dev` · `npm run build` · `npm run lint` · `npm run preview`
+**Backend (`server/`)** : `npm run dev` · `npm run start` · `npm run migrate` · `npm run seed:names` · `npm run typecheck`
