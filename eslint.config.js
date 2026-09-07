@@ -18,5 +18,14 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // Un argument préfixé de « _ » est volontairement inutilisé. Nécessaire pour
+      // les gestionnaires d’erreurs Express : Express ne les reconnaît qu’à leurs
+      // quatre paramètres, donc `next` doit rester déclaré même sans être appelé.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
+    },
   },
 ])

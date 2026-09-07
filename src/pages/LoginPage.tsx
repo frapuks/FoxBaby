@@ -13,27 +13,43 @@ import {
 import { ApiError } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import GoogleSignInButton from "../auth/GoogleSignInButton";
+import { requestPasswordReset } from "../services/passwordReset";
 
 const errorMessage = (err: unknown): string =>
   err instanceof ApiError ? err.message : "Une erreur est survenue. Réessayez.";
 
+type Mode = "signin" | "signup" | "forgot";
+
 const LoginPage = () => {
   const { signInWithEmail, signUpWithEmail } = useAuth();
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+
+  const isForgot = mode === "forgot";
+
+  // Change d'écran en repartant d'un état propre.
+  const goTo = (next: Mode) => {
+    setError(null);
+    setResetSent(false);
+    setMode(next);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      if (isSignUp) {
+      if (mode === "signup") {
         await signUpWithEmail(email, password);
-      } else {
+      } else if (mode === "signin") {
         await signInWithEmail(email, password);
+      } else {
+        await requestPasswordReset(email);
+        setResetSent(true);
       }
     } catch (err) {
       setError(errorMessage(err));
@@ -86,7 +102,9 @@ const LoginPage = () => {
         color="text.secondary"
         sx={{ mb: 4 }}
       >
-        Trouvez le prénom parfait, ensemble.
+        {isForgot
+          ? "Indiquez votre email, nous vous enverrons un lien."
+          : "Trouvez le prénom parfait, ensemble."}
       </Typography>
 
       {error && (
@@ -95,24 +113,37 @@ const LoginPage = () => {
         </Alert>
       )}
 
+      {/* Le serveur répond de la même façon pour un email inconnu : le message
+          reste donc volontairement au conditionnel. */}
+      {resetSent && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          Si un compte existe pour cette adresse, un lien vient d'être envoyé.
+          Pensez à regarder vos spams.
+        </Alert>
+      )}
+
       {/* Formulaire */}
       <Stack component="form" spacing={2} onSubmit={handleSubmit}>
         <TextField
           label="Email"
           type="email"
+          autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           fullWidth
           required
         />
-        <TextField
-          label="Mot de passe"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          fullWidth
-          required
-        />
+        {!isForgot && (
+          <TextField
+            label="Mot de passe"
+            type="password"
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            fullWidth
+            required
+          />
+        )}
         <Button
           type="submit"
           variant="contained"
@@ -120,31 +151,56 @@ const LoginPage = () => {
           fullWidth
           disabled={submitting}
         >
-          {isSignUp ? "Créer mon compte" : "Se connecter"}
+          {isForgot
+            ? "Envoyer le lien"
+            : mode === "signup"
+              ? "Créer mon compte"
+              : "Se connecter"}
         </Button>
       </Stack>
 
-      {/* Séparateur */}
-      <Divider sx={{ my: 3 }}>OU</Divider>
+      {isForgot ? (
+        <Typography variant="body2" align="center" sx={{ mt: 3 }}>
+          <Link component="button" type="button" underline="hover" onClick={() => goTo("signin")}>
+            Retour à la connexion
+          </Link>
+        </Typography>
+      ) : (
+        <>
+          {/* Mot de passe oublié : seulement pour la connexion, pas l'inscription */}
+          {mode === "signin" && (
+            <Typography variant="body2" align="center" sx={{ mt: 2 }}>
+              <Link
+                component="button"
+                type="button"
+                underline="hover"
+                onClick={() => goTo("forgot")}
+              >
+                Mot de passe oublié ?
+              </Link>
+            </Typography>
+          )}
 
-      {/* Connexion Google (bouton GIS, ou repli désactivé si non configuré) */}
-      <GoogleSignInButton onError={setError} />
+          {/* Séparateur */}
+          <Divider sx={{ my: 3 }}>OU</Divider>
 
-      {/* Bascule connexion / création de compte */}
-      <Typography variant="body2" align="center" sx={{ mt: 4 }}>
-        {isSignUp ? "Déjà un compte ? " : "Nouveau parent ? "}
-        <Link
-          component="button"
-          type="button"
-          underline="hover"
-          onClick={() => {
-            setError(null);
-            setIsSignUp((v) => !v);
-          }}
-        >
-          {isSignUp ? "Se connecter" : "Créer un compte"}
-        </Link>
-      </Typography>
+          {/* Connexion Google (bouton GIS, ou repli désactivé si non configuré) */}
+          <GoogleSignInButton onError={setError} />
+
+          {/* Bascule connexion / création de compte */}
+          <Typography variant="body2" align="center" sx={{ mt: 4 }}>
+            {mode === "signup" ? "Déjà un compte ? " : "Nouveau parent ? "}
+            <Link
+              component="button"
+              type="button"
+              underline="hover"
+              onClick={() => goTo(mode === "signup" ? "signin" : "signup")}
+            >
+              {mode === "signup" ? "Se connecter" : "Créer un compte"}
+            </Link>
+          </Typography>
+        </>
+      )}
     </Box>
   );
 };

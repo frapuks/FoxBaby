@@ -4,6 +4,12 @@ import { clearAuthCookie, setAuthCookie } from "../auth/jwt.ts";
 import { verifyGoogleIdToken } from "../auth/google.ts";
 import { hashPassword, verifyPassword } from "../auth/password.ts";
 import { requireAuth } from "../middleware/requireAuth.ts";
+import { sendPasswordResetEmail } from "../mail.ts";
+import {
+  consumePasswordReset,
+  createPasswordReset,
+  invalidatePasswordResets,
+} from "../passwordResets.ts";
 import {
   createEmailUser,
   createGoogleUser,
@@ -203,5 +209,54 @@ authRouter.patch("/password", requireAuth, async (req, res) => {
     }
   }
   await updatePasswordHash(user.id, await hashPassword(parsed.data.newPassword));
+  // Un lien de réinitialisation encore en attente devient caduc.
+  await invalidatePasswordResets(user.id);
+  res.json({ ok: true });
+});
+
+// POST /api/auth/forgot-password — envoie un lien de réinitialisation.
+//
+// Répond toujours 200, même si l'email est inconnu ou rattaché à un compte
+// Google : la réponse ne doit pas permettre d'énumérer les comptes existants.
+authRouter.post("/forgot-password", async (req, res) => {
+  const parsed = z.object({ email: emailSchema }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Email invalide." });
+    return;
+  }
+
+  const user = await findByEmail(parsed.data.email);
+  // Un compte Google sans mot de passe n'a rien à réinitialiser : on ne lui
+  // envoie pas de lien, mais la réponse reste identique.
+  if (user?.password_hash) {
+    try {
+      await sendPasswordResetEmail(user.email, await createPasswordReset(user.id));
+    } catch (err) {
+      // Échec SMTP : on le trace côté serveur sans le révéler à l'appelant.
+      console.error("Envoi du lien de réinitialisation impossible :", err);
+    }
+  }
+
+  res.json({ ok: true });
+});
+
+// POST /api/auth/reset-password — consomme un jeton et pose le nouveau mot de passe.
+// Ne connecte pas l'utilisateur : il repasse par l'écran de connexion.
+authRouter.post("/reset-password", async (req, res) => {
+  const parsed = z
+    .object({ token: z.string().min(1), password: passwordSchema })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message });
+    return;
+  }
+
+  const userId = await consumePasswordReset(parsed.data.token);
+  if (!userId) {
+    res.status(400).json({ error: "Ce lien est invalide ou a expiré. Refaites une demande." });
+    return;
+  }
+
+  await updatePasswordHash(userId, await hashPassword(parsed.data.password));
   res.json({ ok: true });
 });

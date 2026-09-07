@@ -7,11 +7,22 @@ import SwipePage from "./pages/SwipePage";
 import FavoritesPage from "./pages/FavoritesPage";
 import CouplePage from "./pages/CouplePage";
 import ProfilePage from "./pages/ProfilePage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import { useAuth } from "./auth/AuthContext";
+import { readResetTokenFromUrl } from "./services/passwordReset";
 
 const App = () => {
   const [tab, setTab] = useState<Tab>("swipe");
+  // Lu une seule fois au montage : le lien reçu par email est de la forme
+  // "/?reset=<jeton>". Passe à null quand l'écran de réinitialisation se ferme.
+  const [resetToken, setResetToken] = useState<string | null>(readResetTokenFromUrl);
   const { user, loading } = useAuth();
+
+  // Prioritaire sur tout le reste : un lien de réinitialisation peut arriver
+  // alors qu'une session est encore ouverte dans le navigateur.
+  if (resetToken) {
+    return <ResetPasswordPage token={resetToken} onDone={() => setResetToken(null)} />;
+  }
 
   if (loading) {
     return (

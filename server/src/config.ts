@@ -7,4 +7,26 @@ export const config = {
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   cookieSecure: process.env.COOKIE_SECURE === "true",
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
+
+  // URL publique du front, utilisée pour construire le lien de réinitialisation.
+  // Par défaut l'origine CORS, qui est déjà le domaine du front.
+  appUrl: (process.env.APP_URL ?? process.env.CORS_ORIGIN ?? "http://localhost:5173").replace(
+    /\/+$/,
+    "",
+  ),
+
+  // Durée de validité d'un lien de réinitialisation.
+  passwordResetTtlMinutes: Number(process.env.PASSWORD_RESET_TTL_MINUTES ?? 60),
+
+  // SMTP. Si `host` est vide, aucun email n'est envoyé : le lien est écrit dans
+  // les logs du serveur (pratique en dev, jamais suffisant en production).
+  smtp: {
+    host: process.env.SMTP_HOST ?? "",
+    port: Number(process.env.SMTP_PORT ?? 587),
+    // true = TLS implicite (port 465). false = STARTTLS (port 587).
+    secure: process.env.SMTP_SECURE === "true",
+    user: process.env.SMTP_USER ?? "",
+    pass: process.env.SMTP_PASS ?? "",
+    from: process.env.SMTP_FROM ?? "FoxBaby <no-reply@fg-tech.fr>",
+  },
 };

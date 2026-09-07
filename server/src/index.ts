@@ -9,6 +9,7 @@ import { authRouter } from "./routes/auth.ts";
 import { namesRouter } from "./routes/names.ts";
 import { swipesRouter } from "./routes/swipes.ts";
 import { coupleRouter } from "./routes/couple.ts";
+import { purgePasswordResets } from "./passwordResets.ts";
 
 const app = express();
 app.use(express.json());
@@ -42,6 +43,14 @@ app.use(
     res.status(500).json({ error: "Erreur serveur." });
   },
 );
+
+// Ménage des jetons de réinitialisation expirés : au démarrage puis une fois par jour.
+const purge = () =>
+  purgePasswordResets()
+    .then((n) => n > 0 && console.log(`${n} jeton(s) de réinitialisation purgé(s).`))
+    .catch((err) => console.error("Purge des jetons impossible :", err));
+purge();
+setInterval(purge, 24 * 60 * 60 * 1000).unref();
 
 app.listen(config.port, () =>
   console.log(`API FoxBaby à l'écoute sur http://localhost:${config.port}`),

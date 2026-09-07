@@ -19,6 +19,7 @@ FoxBaby est une application mobile de choix de prénom pour un bébé à naître
 - **Page Couple** : stats du couple (matchs, favoris de chacun) et liste des prénoms matchés, filtrable par sexe.
 - **Profil** : avatar (animal au choix), nom, email, mot de passe, filtre de genre des prénoms, gestion de la liaison.
 - **Authentification** : email/mot de passe (JWT en cookie httpOnly) et Google (OAuth).
+- **Mot de passe oublié** : lien de réinitialisation à usage unique envoyé par email (valable 1 h par défaut). Nécessite un serveur SMTP, voir plus bas.
 
 ## Architecture
 
@@ -55,6 +56,7 @@ Internet ─HTTPS→ Cloudflare ─→ Nginx Proxy Manager ─→ [ Caddy ] ─�
 - `names` — `id, slug, name, gender, rand`
 - `swipes` — `user_id → users, name_id → names, decision (favorite|rejected)` (PK composite)
 - `couples` + `couple_members` — un couple relie exactement deux `users` (unicité : un user dans au plus un couple)
+- `password_resets` — `token_hash (PK), user_id → users, expires_at, used_at?` : jetons de réinitialisation. Seul le SHA-256 du jeton est stocké, jamais sa valeur en clair.
 
 Les matchs, favoris du partenaire et exclusion des prénoms déjà vus sont calculés en SQL (jointures).
 
@@ -91,8 +93,22 @@ Pour activer Google en local et régler les ports/secrets, utiliser un fichier d
 
 ## Variables d'environnement
 
-**Backend** (`server/.env`) : `DATABASE_URL`, `PORT`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `COOKIE_SECURE`, `CORS_ORIGIN`.
+**Backend** (`server/.env`) : `DATABASE_URL`, `PORT`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `COOKIE_SECURE`, `CORS_ORIGIN`, `APP_URL`, `PASSWORD_RESET_TTL_MINUTES`, `SMTP_*`.
 **Front** (`.env.local`, injecté au build) : `VITE_API_BASE_URL`, `VITE_GOOGLE_CLIENT_ID`.
+
+
+### Emails (mot de passe oublié)
+
+La réinitialisation de mot de passe passe par un email. Le backend utilise un
+serveur SMTP quelconque, configuré par les variables `SMTP_HOST`, `SMTP_PORT`,
+`SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` et `SMTP_FROM`.
+
+Tant que `SMTP_HOST` est vide, **aucun email n'est envoyé** : le lien est simplement
+écrit dans les logs du backend. C'est le mode de développement ; en production,
+sans SMTP configuré, la fonctionnalité est inutilisable pour les utilisateurs.
+
+`APP_URL` doit pointer sur l'URL publique du front : c'est elle qui construit le
+lien `https://…/?reset=<jeton>` contenu dans l'email.
 
 ## Déploiement (Raspberry Pi)
 
